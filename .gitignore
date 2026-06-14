@@ -1,0 +1,7 @@
+.env
+email_details_cache.json
+shared_files.json
+*.csv
+.openclaw/
+state/
+workspace/
