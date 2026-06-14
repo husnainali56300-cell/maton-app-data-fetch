@@ -13,6 +13,15 @@ let matonConnections = [];
 let isRealtimeSyncEnabled = true;
 let realtimeSyncInterval = null;
 
+function makeHeaders(customHeaders = {}) {
+  const headers = { ...customHeaders };
+  const key = localStorage.getItem('matonApiKey');
+  if (key) {
+    headers['Authorization'] = `Bearer ${key}`;
+  }
+  return headers;
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   // Initial load
   fetchEmails();
@@ -73,7 +82,7 @@ document.addEventListener('DOMContentLoaded', () => {
       btn.disabled = true;
       btn.textContent = 'Deleting...';
 
-      const res = await fetch(url, { method });
+      const res = await fetch(url, { method, headers: makeHeaders() });
       const responseData = await res.json().catch(() => ({}));
 
       btn.disabled = false;
@@ -275,7 +284,7 @@ async function fetchEmails(bypassCache = false) {
   }
 
   try {
-    const res = await fetch(url);
+    const res = await fetch(url, { headers: makeHeaders() });
     if (!res.ok) throw new Error('Failed to load emails');
     
     allEmails = await res.json();
@@ -360,7 +369,7 @@ async function openEmail(id) {
   showDetailPanel();
 
   try {
-    const res = await fetch(`/api/emails/${id}`);
+    const res = await fetch(`/api/emails/${id}`, { headers: makeHeaders() });
     if (!res.ok) throw new Error('Failed to load email details');
     
     const email = await res.json();
@@ -441,7 +450,7 @@ async function fetchDriveFiles(bypassCache = false) {
   }
 
   try {
-    const res = await fetch(url);
+    const res = await fetch(url, { headers: makeHeaders() });
     if (!res.ok) throw new Error('Failed to load files');
     
     const data = await res.json();
@@ -672,7 +681,8 @@ function openDriveFile(file) {
   showDriveDetailPanel();
   
   const mime = file.mimeType || '';
-  const fileUrl = `/api/drive/files/${file.id}/download?inline=true&name=${encodeURIComponent(file.name)}&mimeType=${encodeURIComponent(file.mimeType)}`;
+  const key = localStorage.getItem('matonApiKey') || '';
+  const fileUrl = `/api/drive/files/${file.id}/download?inline=true&name=${encodeURIComponent(file.name)}&mimeType=${encodeURIComponent(file.mimeType)}&apiKey=${encodeURIComponent(key)}`;
   
   if (mime.startsWith('image/')) {
     detailBody.innerHTML = `<img src="${fileUrl}" class="drive-preview-image" alt="${file.name}">`;
@@ -710,7 +720,7 @@ async function syncDriveFiles() {
   syncBtn.textContent = '⚡ Syncing...';
 
   try {
-    const res = await fetch('/api/drive/sync', { method: 'POST' });
+    const res = await fetch('/api/drive/sync', { method: 'POST', headers: makeHeaders() });
     if (!res.ok) throw new Error('Sync failed');
     allDriveFiles = await res.json();
     renderDrive();
@@ -730,7 +740,7 @@ async function copyDriveFile(id, name) {
   try {
     const res = await fetch(`/api/drive/files/${id}/copy`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: makeHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ name: newName })
     });
     if (!res.ok) throw new Error('Copy failed');
@@ -748,7 +758,7 @@ async function renameDriveFile(id, currentName) {
   try {
     const res = await fetch(`/api/drive/files/${id}`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      headers: makeHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ name: newName })
     });
     if (!res.ok) throw new Error('Rename failed');
@@ -770,7 +780,8 @@ async function deleteDriveFile(id, name) {
 
   try {
     const res = await fetch(`/api/drive/files/${id}`, {
-      method: 'DELETE'
+      method: 'DELETE',
+      headers: makeHeaders()
     });
     if (!res.ok) throw new Error('Delete failed');
     
@@ -786,7 +797,8 @@ async function deleteDriveFile(id, name) {
 }
 
 function downloadDriveFile(id, name, mimeType) {
-  window.open(`/api/drive/files/${id}/download?name=${encodeURIComponent(name)}&mimeType=${encodeURIComponent(mimeType)}`, '_blank');
+  const key = localStorage.getItem('matonApiKey') || '';
+  window.open(`/api/drive/files/${id}/download?name=${encodeURIComponent(name)}&mimeType=${encodeURIComponent(mimeType)}&apiKey=${encodeURIComponent(key)}`, '_blank');
 }
 
 // Connections Specific Functions
@@ -795,7 +807,7 @@ async function fetchConnections() {
   content.innerHTML = '<div class="spinner" style="margin: 40px auto;"></div>';
   
   try {
-    const res = await fetch('/api/maton/connections');
+    const res = await fetch('/api/maton/connections', { headers: makeHeaders() });
     if (!res.ok) throw new Error('Failed to load connections');
     const data = await res.json();
     matonConnections = data.connections || [];
@@ -1098,9 +1110,10 @@ function initSettingsModal() {
     saveBtn.textContent = 'Saving...';
 
     try {
+      localStorage.setItem('matonApiKey', key);
       const res = await fetch('/api/maton/apikey', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: makeHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ apiKey: key })
       });
 
@@ -1133,12 +1146,16 @@ function initSettingsModal() {
 
   async function checkApiKeyStatus() {
     try {
-      const res = await fetch('/api/maton/apikey/status');
+      const res = await fetch('/api/maton/apikey/status', { headers: makeHeaders() });
       if (!res.ok) throw new Error('Status check failed');
       const data = await res.json();
       
-      if (data.configured) {
-        statusText.textContent = `Status: Configured (${data.preview})`;
+      const localKey = localStorage.getItem('matonApiKey');
+      const isConfigured = data.configured || !!localKey;
+      const preview = localKey ? '...' + localKey.slice(-4) : data.preview;
+
+      if (isConfigured) {
+        statusText.textContent = `Status: Configured (${preview})`;
         statusText.className = 'status-indicator configured';
       } else {
         statusText.textContent = 'Status: Not Configured';
@@ -1156,7 +1173,7 @@ async function fetchGmailLabels() {
   if (!container) return;
   
   try {
-    const res = await fetch('/api/emails/labels');
+    const res = await fetch('/api/emails/labels', { headers: makeHeaders() });
     if (!res.ok) throw new Error('Failed to load labels');
     const data = await res.json();
     
@@ -1274,7 +1291,7 @@ async function fetchEmailsSilent() {
   const url = `/api/emails?category=${activeFilter}&month=${month}&refresh=true`;
 
   try {
-    const res = await fetch(url);
+    const res = await fetch(url, { headers: makeHeaders() });
     if (!res.ok) throw new Error('Failed silent fetch');
     const data = await res.json();
     allEmails = data;
@@ -1316,7 +1333,7 @@ async function fetchDriveFilesSilent() {
   }
 
   try {
-    const res = await fetch(url);
+    const res = await fetch(url, { headers: makeHeaders() });
     if (!res.ok) throw new Error('Failed silent fetch');
     const data = await res.json();
     allDriveFiles = data.files || [];
@@ -1332,7 +1349,7 @@ async function fetchConnectionsSilent() {
   if (activeConnectionsFilter !== 'all-connections') return;
 
   try {
-    const res = await fetch('/api/maton/connections');
+    const res = await fetch('/api/maton/connections', { headers: makeHeaders() });
     if (!res.ok) throw new Error('Failed silent fetch');
     const data = await res.json();
     matonConnections = data.connections || [];

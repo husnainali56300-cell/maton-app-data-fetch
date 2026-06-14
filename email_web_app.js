@@ -156,6 +156,14 @@ function parseMessageParts(part, result = { text: '', html: '' }) {
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://localhost:${PORT}`);
   
+  // Extract API key dynamically from headers or query parameters if sent
+  const headerKey = req.headers['authorization']?.startsWith('Bearer ') 
+    ? req.headers['authorization'].substring(7).trim() 
+    : (req.headers['x-maton-api-key'] || url.searchParams.get('apiKey'));
+  if (headerKey) {
+    apiKey = headerKey;
+  }
+  
   if (url.pathname === '/' || url.pathname === '/index.html') {
     if (req.method === 'GET') {
       res.writeHead(200, { 'Content-Type': 'text/html' });
